@@ -1,6 +1,7 @@
 version: '3.8'
 
 services:
+
   clickhouse-server:
     image: clickhouse/clickhouse-server
     container_name: clickhouse-pap
@@ -14,5 +15,5 @@ services:
         soft: 262144
         hard: 262144
     volumes:
-      - ../pap-volumes/data:/var/lib/clickhouse
-      - ../pap-volumes/logs:/var/log/clickhouse-server
+      - ../pap-volumes/ch_data:/var/lib/clickhouse
+      - ../pap-volumes/ch_logs:/var/log/clickhouse-server
