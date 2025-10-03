@@ -1,1 +1,1 @@
-docker compose -f docker-compose.ch-local.yaml up
+docker compose -f docker-compose.ch-local.yaml up -d
