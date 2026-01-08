@@ -1,0 +1,154 @@
+services:
+  # --- ClickHouse ---
+  clickhouse:
+    image: clickhouse/clickhouse-server:latest
+    container_name: clickhouse
+    ports:
+      - "8123:8123"
+      - "9000:9000"
+    environment:
+      CLICKHOUSE_DB: ${CLICKHOUSE_DB}
+      CLICKHOUSE_USER: ${CLICKHOUSE_USER}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD}
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: ${CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT}
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+    volumes:
+      - clickhouse_data:/var/lib/clickhouse
+    networks:
+      - data-platform-network
+
+  # --- Superset ---
+  superset:
+    build:
+      context: ./docker/superset
+      dockerfile: Dockerfile
+    container_name: superset
+    ports:
+      - "${SUPERSET_PORT}:8088"
+    environment:
+      SUPERSET_SECRET_KEY: ${SUPERSET_SECRET_KEY}
+      SUPERSET_DB_USER: ${SUPERSET_DB_USER}
+      SUPERSET_DB_PASSWORD: ${SUPERSET_DB_PASSWORD}
+      SUPERSET_DB_NAME: ${SUPERSET_DB_NAME}
+      SUPERSET_DB_HOST: superset-db
+      REDIS_HOST: superset-cache
+    volumes:
+      - ./docker/superset/superset_config.py:/app/pythonpath/superset_config.py
+      - ./scripts/init-superset.sh:/app/scripts/init-superset.sh
+      - superset_home:/app/superset_home
+    command: ["/bin/sh", "-c", "/app/scripts/init-superset.sh && exec /usr/bin/run-server.sh"]
+    depends_on:
+      superset-db:
+        condition: service_healthy
+      superset-cache:
+        condition: service_started
+    networks:
+      - data-platform-network
+
+  superset-db:
+    image: postgres:15
+    container_name: superset-db
+    environment:
+      POSTGRES_DB: ${SUPERSET_DB_NAME}
+      POSTGRES_USER: ${SUPERSET_DB_USER}
+      POSTGRES_PASSWORD: ${SUPERSET_DB_PASSWORD}
+    volumes:
+      - superset_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${SUPERSET_DB_USER} -d ${SUPERSET_DB_NAME}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - data-platform-network
+
+  superset-cache:
+    image: redis:7
+    container_name: superset-cache
+    networks:
+      - data-platform-network
+
+  # --- OpenMetadata ---
+  openmetadata-db:
+    image: postgres:15
+    container_name: openmetadata-db
+    environment:
+      POSTGRES_DB: ${OM_DB_NAME}
+      POSTGRES_USER: ${OM_DB_USER}
+      POSTGRES_PASSWORD: ${OM_DB_PASSWORD}
+    volumes:
+      - openmetadata_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${OM_DB_USER} -d ${OM_DB_NAME}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - data-platform-network
+
+  openmetadata-search:
+    image: opensearchproject/opensearch:2.7.0
+    container_name: openmetadata-search
+    environment:
+      - cluster.name=opensearch-cluster
+      - node.name=opensearch-node
+      - discovery.type=single-node
+      - bootstrap.memory_lock=true
+      - "OPENSEARCH_JAVA_OPTS=-Xms512m -Xmx512m"
+      - DISABLE_INSTALL_DEMO_CONFIG=true
+      - DISABLE_SECURITY_PLUGIN=true
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+      nofile:
+        soft: 65536
+        hard: 65536
+    volumes:
+      - openmetadata_search_data:/usr/share/opensearch/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:9200/_cluster/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - data-platform-network
+
+  openmetadata-server:
+    image: openmetadata/server:latest
+    container_name: openmetadata-server
+    ports:
+      - "${OM_PORT}:8585"
+    environment:
+      DB_DRIVER_CLASS: org.postgresql.Driver
+      DB_SCHEME: postgresql
+      DB_USE_SSL: "false"
+      DB_USER: ${OM_DB_USER}
+      DB_PASSWORD: ${OM_DB_PASSWORD}
+      DB_HOST: openmetadata-db
+      DB_PORT: ${OM_DB_PORT}
+      DB_NAME: ${OM_DB_NAME}
+      SEARCH_TYPE: opensearch
+      SEARCH_HOST: openmetadata-search
+      SEARCH_PORT: 9200
+    depends_on:
+      openmetadata-db:
+        condition: service_healthy
+      openmetadata-search:
+        condition: service_healthy
+    networks:
+      - data-platform-network
+
+networks:
+  data-platform-network:
+    driver: bridge
+
+volumes:
+  clickhouse_data:
+  superset_db_data:
+  superset_home:
+  openmetadata_db_data:
+  openmetadata_search_data:

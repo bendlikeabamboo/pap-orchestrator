@@ -1,0 +1,43 @@
+graph TD
+    subgraph "External Access"
+        User((User))
+    end
+
+    subgraph "Data Platform Network"
+        subgraph "Visualization (Superset)"
+            SS[Superset App]
+            SS_DB[(Superset Metadata DB)]
+            SS_Redis[(Superset Cache)]
+            SS_Worker[Superset Worker]
+        end
+
+        subgraph "Metadata Management (OpenMetadata)"
+            OM_Server[OpenMetadata Server]
+            OM_DB[(OpenMetadata Metadata DB)]
+            OM_Search[(OpenSearch)]
+            OM_Ingestion[Ingestion/Profiler]
+        end
+
+        subgraph "Data Warehouse"
+            CH[(ClickHouse)]
+        end
+
+        %% Connections
+        User --> SS
+        User --> OM_Server
+        
+        SS --> SS_DB
+        SS --> SS_Redis
+        SS --> CH
+        
+        OM_Server --> OM_DB
+        OM_Server --> OM_Search
+        OM_Ingestion --> CH
+        OM_Ingestion --> OM_Server
+    end
+
+    %% Volumes
+    SS_DB --- V1[(superset_db_data)]
+    OM_DB --- V2[(openmetadata_db_data)]
+    OM_Search --- V3[(opensearch_data)]
+    CH --- V4[(clickhouse_data)]
